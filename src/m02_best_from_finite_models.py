@@ -65,6 +65,7 @@ def P_xf_xi(xf, xi, lam, M, ep_noise = 0):
     return value
 
 
+
 def Normalize_the_Lambdas(lam, M, ep_noise):
     '''
     The constraints of the world are not taken into account in the definitions of the
@@ -76,6 +77,7 @@ def Normalize_the_Lambdas(lam, M, ep_noise):
         norm = 1
     lam = lam*M/norm
     return lam
+
 
 
 def Get_P_V_el_Iterative(coordinates, dimensions, hyperparameters, V, R, M, Lam_candidates=np.ones((1,5))):
