@@ -1,6 +1,10 @@
-# Project_04_RL
-some tests with reinforcement learning.
-
-RL_01 applies a gradient ascend method to maximize the value function (V). The boundary condition that the sum
-of all jump probabilities has to be equal to one is implemented with an additional penalty term.
-The strength of the penalty coefficient for the boundary condition increases slowly until the boundary condition is satisfied to a certain extend.
+# Navigation through a dynamic map using the Bellmann equation
+ 
+<img width="800" alt="teaser" src="./figures/map_walkthrough.gif">
+ 
+This repo contains the source code used to generate the results in the
+Medium article
+[Navigation through a dynamic map using the Bellmann equation](https://medium.com/)
+ 
+A detailed description of the applied method can be found the provided
+[pdf document](rl.pdf).
