@@ -1,8 +1,8 @@
-import copy
 import itertools
 import numpy as np
 from matplotlib import pyplot as plt
 from typing import List, Tuple
+from scipy.optimize import fmin_l_bfgs_b
 
 
 def kd(a, b):
@@ -20,25 +20,26 @@ def get_reward(x: Tuple[int, int], t: int, reward_points: List[dict]):
     return rew
 
 
-def get_mask(x: Tuple[int, int], tau: int, impenetrables: List[Tuple[int, int]]):
+def get_mask(x: Tuple[int, int],
+             impenetrables: List[Tuple[int, int]],
+             impenetrables_next: List[Tuple[int, int]]):
     """ Mask that takes into account the impenetrable points
 
     :param x: current position
-    :param tau: time
     :param impenetrables: set of impenetrable points
+    :param impenetrables_next: set of impenetrable points at the next time step
     """
 
     if x in impenetrables:
         mask = np.zeros(5).astype(bool)
     else:
-        mask = np.logical_not(
-            np.array([
-                sum(kd((x[0], x[1]), d) for d in impenetrables),  # stay
-                sum(kd((x[0] - 1, x[1]), d) for d in impenetrables),  # move up
-                sum(kd((x[0] + 1, x[1]), d) for d in impenetrables),  # move down
-                sum(kd((x[0], x[1] + 1), d) for d in impenetrables),  # move right
-                sum(kd((x[0], x[1] - 1), d) for d in impenetrables)  # move left
-            ]))
+        mask = np.array([
+                sum(kd((x[0], x[1]), d) for d in impenetrables_next),  # stay
+                sum(kd((x[0] - 1, x[1]), d) for d in impenetrables_next),  # move up
+                sum(kd((x[0] + 1, x[1]), d) for d in impenetrables_next),  # move down
+                sum(kd((x[0], x[1] + 1), d) for d in impenetrables_next),  # move right
+                sum(kd((x[0], x[1] - 1), d) for d in impenetrables_next)  # move left
+        ]) == 0
 
     return mask
 
@@ -87,24 +88,31 @@ def get_grad_p_xf_xi(xf, xi, lam, mask):
     return grad_p_xf_xi
 
 
-def get_all_grad_p_xf_xi(xi, lam, mask, d0, d1):
-    all_grad_xf = np.zeros(shape=(d0, d1, 5))
+def neg_grad_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8):
+    dv = sum([
+        (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_grad_p_xf_xi(xf, xi, lam, mask)
+        for xf in itertools.product(range(d0), range(d1))
+    ])
 
-    for xf in itertools.product(range(d0), range(d1)):
-        all_grad_xf[xf] = get_grad_p_xf_xi(xf, xi, lam, mask)
-
-    return all_grad_xf.transpose((2, 0, 1))  # shape = (5, d0, d1)
+    return -dv
 
 
-def get_path(params: dict,
-             impenetrable_points: List[Tuple[int, int]],
-             reward_points: List[dict]):
+def neg_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8):
+    v = sum([
+        (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_p_xf_xi(xf, xi, lam, mask)
+        for xf in itertools.product(range(d0), range(d1))
+    ])
+
+    return -v
+
+
+def get_path_v2(params: dict,
+                impenetrable_points: List[List[Tuple[int, int]]],
+                reward_points: List[dict]):
     d0 = params.get('d0', 3)
     d1 = params.get('d1', 4)
     t_max = params.get('t_max', 6)
-    alpha = params.get('alpha', 0.1)
-    gamma = params.get('gamma', 1)
-    max_iterations = params.get('max_iterations', 10000)
+    # gamma = params.get('gamma', 1)
 
     lams = np.zeros(shape=(t_max, d0, d1, 5))
     rhos = np.zeros(shape=(t_max, d0, d1, 5))
@@ -115,48 +123,33 @@ def get_path(params: dict,
 
     for tau in range(t_max):
         for x in itertools.product(range(d0), range(d1)):
-            rewards[tau][x] = get_reward(x, tau, reward_points)
-            masks[tau][x] = get_mask(x, tau, impenetrable_points)
+            rewards[tau][x] = get_reward(x, tau, reward_points)  # rewards[tau] refers to reward at tau+1
+            masks[tau][x] = get_mask(x, impenetrable_points[tau], impenetrable_points[tau + 1])
 
     for tau in np.arange(0, t_max)[::-1]:
         print(f'tau = {tau}')
 
-        gamma_tau = gamma ** tau
+        # gamma_tau = gamma ** tau
 
         for xi in itertools.product(range(d0), range(d1)):
 
-            reward = rewards[tau]
+            reward = rewards[tau]  # rewards[tau] refers to reward collected at tau+1
             mask = masks[tau][xi]
-            lam = lams[tau][xi]
-            rho, rho_prev = get_rho(lam, mask), None
             v_star = np.zeros(shape=(d0, d1)) if tau == t_max - 1 else v_stars[tau + 1]
 
-            for it in range(max_iterations):
-
-                # all_grad_xf = get_all_grad_p_xf_xi(xi, lam, mask, d0, d1)
-                #
-                # d_lam = ((gamma * v_star + gamma_tau * rewards) * all_grad_xf).sum(axis=(1, 2))
-
-                d_lam = sum([
-                    (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_grad_p_xf_xi(xf, xi, lam, mask)
-                    for xf in itertools.product(range(d0), range(d1))
-                ])
-
-                lam += alpha * d_lam
-
-                rho_prev = rho
-                rho = get_rho(lam, mask)
-
-                if np.linalg.norm((rho - rho_prev)) < 10 ** -6:
-                    break
+            lam, min_val, info = fmin_l_bfgs_b(func=neg_v_st_new,
+                                               x0=np.array([0., 0., 0., 0., 0.]),
+                                               fprime=neg_grad_v_st_new,
+                                               args=[np.round(v_star, 4), mask, xi, reward],  # small trick
+                                               factr=1e5,  # 1e7
+                                               pgtol=1e-9,  # 1e-5
+                                               maxfun=1000000,  # 15000
+                                               maxiter=1000000)  # 15000
 
             lams[tau][xi] = lam
-            rhos[tau][xi] = rho
+            rhos[tau][xi] = get_rho(lam, mask)
 
-            v_stars[tau][xi] = sum([
-                (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_p_xf_xi(xf, xi, lam, mask)
-                for xf in itertools.product(range(d0), range(d1))
-            ])
+            v_stars[tau][xi] = - min_val
 
     result = {
         'v_stars': v_stars,
