@@ -1,5 +1,17 @@
 .idea*
 
+RL_01.ipynb
+RL_02.ipynb
+RL_03.ipynb
+temp.ipynb
+GoSales_Tx_NaiveBayes.csv
+
+common_fct.py
+m01_lagrange_multipliers.py
+m02_best_from_finite_models.py
+m03_some_mc.py
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
