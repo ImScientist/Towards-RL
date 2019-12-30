@@ -34,11 +34,11 @@ def get_mask(x: Tuple[int, int],
         mask = np.zeros(5).astype(bool)
     else:
         mask = np.array([
-                sum(kd((x[0], x[1]), d) for d in impenetrables_next),  # stay
-                sum(kd((x[0] - 1, x[1]), d) for d in impenetrables_next),  # move up
-                sum(kd((x[0] + 1, x[1]), d) for d in impenetrables_next),  # move down
-                sum(kd((x[0], x[1] + 1), d) for d in impenetrables_next),  # move right
-                sum(kd((x[0], x[1] - 1), d) for d in impenetrables_next)  # move left
+            sum(kd((x[0], x[1]), d) for d in impenetrables_next),  # stay
+            sum(kd((x[0] - 1, x[1]), d) for d in impenetrables_next),  # move up
+            sum(kd((x[0] + 1, x[1]), d) for d in impenetrables_next),  # move down
+            sum(kd((x[0], x[1] + 1), d) for d in impenetrables_next),  # move right
+            sum(kd((x[0], x[1] - 1), d) for d in impenetrables_next)  # move left
         ]) == 0
 
     return mask
@@ -106,9 +106,9 @@ def neg_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8
     return -v
 
 
-def get_path_v2(params: dict,
-                impenetrable_points: List[List[Tuple[int, int]]],
-                reward_points: List[dict]):
+def get_path(params: dict,
+             impenetrable_points: List[List[Tuple[int, int]]],
+             reward_points: List[dict]):
     d0 = params.get('d0', 3)
     d1 = params.get('d1', 4)
     t_max = params.get('t_max', 6)
@@ -116,14 +116,17 @@ def get_path_v2(params: dict,
 
     lams = np.zeros(shape=(t_max, d0, d1, 5))
     rhos = np.zeros(shape=(t_max, d0, d1, 5))
-    v_stars = np.zeros(shape=(t_max, d0, d1))
-
-    rewards = np.zeros(shape=(t_max, d0, d1))
     masks = np.ones(shape=(t_max, d0, d1, 5)).astype(bool)
+
+    v_stars = np.zeros(shape=(t_max + 1, d0, d1))
+    rewards = np.zeros(shape=(t_max + 1, d0, d1))
+
+    for tau in range(t_max + 1):
+        for x in itertools.product(range(d0), range(d1)):
+            rewards[tau][x] = get_reward(x, tau, reward_points)
 
     for tau in range(t_max):
         for x in itertools.product(range(d0), range(d1)):
-            rewards[tau][x] = get_reward(x, tau, reward_points)  # rewards[tau] refers to reward at tau+1
             masks[tau][x] = get_mask(x, impenetrable_points[tau], impenetrable_points[tau + 1])
 
     for tau in np.arange(0, t_max)[::-1]:
@@ -132,10 +135,9 @@ def get_path_v2(params: dict,
         # gamma_tau = gamma ** tau
 
         for xi in itertools.product(range(d0), range(d1)):
-
-            reward = rewards[tau]  # rewards[tau] refers to reward collected at tau+1
+            reward = rewards[tau + 1]
             mask = masks[tau][xi]
-            v_star = np.zeros(shape=(d0, d1)) if tau == t_max - 1 else v_stars[tau + 1]
+            v_star = v_stars[tau + 1]
 
             lam, min_val, info = fmin_l_bfgs_b(func=neg_v_st_new,
                                                x0=np.array([0., 0., 0., 0., 0.]),
@@ -183,3 +185,4 @@ def plot_rho(V, probabilities, impenetrable_points, d0, d1):
         plt.gca().text(j, i, label, ha='center', va='center')
 
     plt.show()
+    return fig
