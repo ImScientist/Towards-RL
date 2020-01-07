@@ -25,14 +25,17 @@ def get_mask(x: Tuple[int, int],
              impenetrables_next: List[Tuple[int, int]]):
     """ Mask that takes into account the impenetrable points
 
-    :param x: current position
-    :param impenetrables: set of impenetrable points
-    :param impenetrables_next: set of impenetrable points at the next time step
+    :param x: current position (row, column)
+    :param impenetrables: list of impenetrable points
+    :param impenetrables_next: list of impenetrable points at the next time step
     """
 
     if x in impenetrables:
+        # it is not possible to be present at this point
         mask = np.zeros(5).astype(bool)
     else:
+        # see if it is possible to do an action based on the positions of the impenetrable points
+        # at the next time step
         mask = np.array([
             sum(kd((x[0], x[1]), d) for d in impenetrables_next),  # stay
             sum(kd((x[0] - 1, x[1]), d) for d in impenetrables_next),  # move up
@@ -46,6 +49,9 @@ def get_mask(x: Tuple[int, int],
 
 def get_rho(lam: np.ndarray, mask: np.ndarray):
     """ Get the probabilities for [stay, up, down, right, left] movement
+
+    :param lam: 1d-array
+    :param mask: 1d-array obtained from get_mask()
     """
 
     r = np.zeros(shape=(len(mask),))
@@ -59,6 +65,13 @@ def get_rho(lam: np.ndarray, mask: np.ndarray):
 
 
 def get_p_xf_xi(xf, xi, lam, mask):
+    """ Get the conditional probability to move to xf given that one step before you were at xi
+
+    :param xf: target position
+    :param xi: previous position
+    :param lam: 1d-array
+    :param mask: 1d-array obtained from get_mask()
+    """
     rho = get_rho(lam, mask)
 
     p_xf_xi = \
@@ -72,6 +85,13 @@ def get_p_xf_xi(xf, xi, lam, mask):
 
 
 def get_grad_p_xf_xi(xf, xi, lam, mask):
+    """ Get the derivative of p_xf_xi wrt the 5 lambdas
+
+    :param xf: target position
+    :param xi: previous position
+    :param lam: 1d-array
+    :param mask: 1d-array obtained from get_mask()
+    """
     rho = get_rho(lam, mask)
     p_xf_xi = get_p_xf_xi(xf, xi, lam, mask)
 
@@ -89,6 +109,14 @@ def get_grad_p_xf_xi(xf, xi, lam, mask):
 
 
 def neg_grad_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8):
+    """ Get the negative gradient of the expected score V^*_{[T-1, ... t]} (xi) defined in eq. (9)
+
+    :param lam: 1d-array
+    :param v_star: 2d-array of expected scores V^*_{[T-1, ... t+1]} (xf) for all positions xf
+    :param mask: 1d-array obtained from get_mask()
+    :param xi: position at `t`
+    :param reward: 2d-array of rewards R(t+1, xf) for all positions xf
+    """
     dv = sum([
         (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_grad_p_xf_xi(xf, xi, lam, mask)
         for xf in itertools.product(range(d0), range(d1))
@@ -98,6 +126,15 @@ def neg_grad_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3,
 
 
 def neg_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8):
+    """ Get the negative expected score V^*_{[T-1, ... t]} (xi) defined in eq. (9)
+
+    :param lam:  1d-array
+    :param v_star:  2d-array of expected scores V^*_{[T-1, ... t+1]} (xf) for all positions xf
+    :param mask: 1d-array obtained from get_mask()
+    :param xi: position at `t`
+    :param reward: 2d-array of rewards R(t+1, xf) for all positions xf
+    """
+
     v = sum([
         (gamma * v_star[xf] + gamma_tau * reward[xf]) * get_p_xf_xi(xf, xi, lam, mask)
         for xf in itertools.product(range(d0), range(d1))
@@ -109,9 +146,11 @@ def neg_v_st_new(lam, v_star, mask, xi, reward, gamma=1, gamma_tau=1, d0=3, d1=8
 def get_path(params: dict,
              impenetrable_points: List[List[Tuple[int, int]]],
              reward_points: List[dict]):
+    """ Get the optimal probabilities to navigate through the map for every time step.
+    """
     d0 = params.get('d0', 3)
-    d1 = params.get('d1', 4)
-    t_max = params.get('t_max', 6)
+    d1 = params.get('d1', 8)
+    t_max = params.get('t_max', 15)
     # gamma = params.get('gamma', 1)
 
     lams = np.zeros(shape=(t_max, d0, d1, 5))
@@ -139,10 +178,11 @@ def get_path(params: dict,
             mask = masks[tau][xi]
             v_star = v_stars[tau + 1]
 
+            # use np.round(v_star, 4) instead of v_star to ensure the numerical stability
             lam, min_val, info = fmin_l_bfgs_b(func=neg_v_st_new,
                                                x0=np.array([0., 0., 0., 0., 0.]),
                                                fprime=neg_grad_v_st_new,
-                                               args=[np.round(v_star, 4), mask, xi, reward],  # small trick
+                                               args=[np.round(v_star, 4), mask, xi, reward, 1, 1, d0, d1],
                                                factr=1e5,  # 1e7
                                                pgtol=1e-9,  # 1e-5
                                                maxfun=1000000,  # 15000
