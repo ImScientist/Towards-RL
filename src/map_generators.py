@@ -1,5 +1,4 @@
-""" Collection of functions that are used to generate the
-dynamic map.
+""" Collection of functions that are used to generate the dynamic map.
 """
 import numpy as np
 
