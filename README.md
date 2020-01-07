@@ -8,3 +8,6 @@ Medium article
  
 A detailed description of the applied method can be found the provided
 [pdf document](rl.pdf).
+
+The results can be replicated by using the provided 
+[jupyter notebook](RL_01_reforged.ipynb).
